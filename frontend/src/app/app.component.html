@@ -1,0 +1,370 @@
+<div class="app-container">
+  <!-- Interactive animated neon backdrop mesh -->
+  <div class="neon-mesh-background">
+    <div class="blob blob-purple"></div>
+    <div class="blob blob-blue"></div>
+    <div class="blob blob-cyan"></div>
+  </div>
+
+  <!-- Header Section with Real-Time Stats -->
+  <header class="app-header">
+    <div class="header-logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5z" stroke-dasharray="2 2" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </div>
+      <div class="logo-text">
+        <h1>Idea<span>Synthesizer</span></h1>
+        <p>Hybrid RAG Duplicate & Similarity Analysis Engine</p>
+      </div>
+    </div>
+    
+    <div class="header-stats">
+      <div class="stat-pill">
+        <span class="stat-label">Indexed Ideas</span>
+        <span class="stat-value" id="stats-total">{{ totalIdeasCount }}</span>
+      </div>
+      <div class="stat-pill highlight">
+        <span class="stat-label">Duplicates Logged</span>
+        <span class="stat-value" id="stats-duplicates">{{ duplicatesBlockedCount }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- API Rate Limit Warnings Banner Panel -->
+  <div class="warnings-overlay-container" *ngIf="activeWarnings.length > 0">
+    <div class="warning-alert-card" *ngFor="let warn of activeWarnings; let idx = index">
+      <div class="warning-alert-icon">⚠️</div>
+      <div class="warning-alert-body">
+        <h4>API System Warning ({{ warn.model }})</h4>
+        <p>{{ warn.message }}</p>
+      </div>
+      <button class="warning-alert-close" (click)="dismissWarning(idx)">×</button>
+    </div>
+  </div>
+
+  <!-- Main RAG Panel Grid -->
+  <main class="main-workspace">
+    
+    <!-- LEFT PANEL: Idea Submission Forge -->
+    <section class="workspace-card forge-panel">
+      <div class="panel-header">
+        <div class="badge">01</div>
+        <h2>The Idea Forge</h2>
+        <p>Draft your concept. The system will analyze it against all indexed knowledge.</p>
+      </div>
+
+      <div class="form-group">
+        <label for="idea-title">
+          <span>Idea Title</span>
+          <span class="counter" [class.warning]="titleText.length > 85">
+            {{ titleText.length }}/100
+          </span>
+        </label>
+        <input 
+          type="text" 
+          id="idea-title"
+          [(ngModel)]="titleText"
+          maxlength="100"
+          placeholder="Enter a concise, descriptive title (e.g. AI Smart Garden Irrigator)..."
+          [disabled]="isScanning || isSaving"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="idea-description">
+          <span>Detailed Description</span>
+          <span class="counter" [class.warning]="descriptionText.length > 9000">
+            {{ descriptionText.length | number }}/10,000
+          </span>
+        </label>
+        <textarea 
+          id="idea-description"
+          [(ngModel)]="descriptionText"
+          maxlength="10000"
+          placeholder="Describe your idea in detail. Explain the core mechanism, target audience, technical implementation, and unique value proposition..."
+          [disabled]="isScanning || isSaving"
+        ></textarea>
+        <div class="textarea-footer">
+          <span class="tip">💡 Pro Tip: Detailed descriptions yield significantly higher reranking accuracy.</span>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button 
+          id="scan-btn"
+          class="btn btn-secondary" 
+          (click)="runScan()"
+          [disabled]="isScanning || isSaving || !titleText.trim() || !descriptionText.trim()"
+        >
+          <span class="btn-icon">⚡</span> Scan for Similarities
+        </button>
+        
+        <button 
+          id="submit-btn"
+          class="btn btn-primary" 
+          (click)="submitIdea()"
+          [disabled]="isScanning || isSaving || !titleText.trim() || !descriptionText.trim() || (checkResult && checkResult.is_duplicate)"
+        >
+          <span class="btn-icon" *ngIf="!isSaving">📥</span>
+          <span class="spinner-inline" *ngIf="isSaving"></span>
+          {{ isSaving ? 'Saving & Indexing...' : 'Index & Save Idea' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Similarity & Duplicate Scanner Result Board -->
+    <section class="workspace-card scanner-panel" [class.active-scan]="isScanning" [class.has-result]="checkResult">
+      
+      <!-- STATE 1: System Idle -->
+      <div class="scanner-state idle-state" *ngIf="!isScanning && !checkResult">
+        <div class="radar-animation">
+          <div class="ring r1"></div>
+          <div class="ring r2"></div>
+          <div class="ring r3"></div>
+          <div class="scan-laser"></div>
+        </div>
+        <h3>Scanner Standby</h3>
+        <p>Fill out the Idea Forge and click <strong>Scan for Similarities</strong> to trigger the multi-stage Hybrid RAG pipeline.</p>
+      </div>
+
+      <!-- STATE 2: Active Scanning Animation -->
+      <div class="scanner-state scanning-state" *ngIf="isScanning">
+        <div class="hologram-container">
+          <div class="hologram-scanner-line"></div>
+          <div class="hologram-cube"></div>
+        </div>
+        
+        <div class="scan-progress">
+          <h3>Analyzing Concept...</h3>
+          <div class="progress-bar-container">
+            <div class="progress-bar" [style.width.%]="scanStep * 25"></div>
+          </div>
+          <p class="scan-milestone">{{ scanMessage }}</p>
+          
+          <ul class="progress-checkpoints">
+            <li [class.done]="scanStep > 1" [class.active]="scanStep === 1">Metadata & Tag Extraction</li>
+            <li [class.done]="scanStep > 2" [class.active]="scanStep === 2">Dense Gemini Vector Embedding</li>
+            <li [class.done]="scanStep > 3" [class.active]="scanStep === 3">Qdrant Sparse-Dense Hybrid Search</li>
+            <li [class.done]="scanStep > 4" [class.active]="scanStep === 4">Cross-Encoder Local Reranking</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- STATE 3: Scan Results Board -->
+      <div class="scanner-state results-state" *ngIf="!isScanning && checkResult">
+        <div class="panel-header-results">
+          <div class="header-action">
+            <h3>Scan Diagnosis</h3>
+            <button id="reset-btn" class="btn-close-result" (click)="clearScan()">Clear Board</button>
+          </div>
+          
+          <!-- Duplicate Warning Banner -->
+          <div class="warning-banner" [class.duplicate]="checkResult.is_duplicate" [class.unique]="!checkResult.is_duplicate">
+            <div class="banner-icon">
+              <span *ngIf="checkResult.is_duplicate">⚠️</span>
+              <span *ngIf="!checkResult.is_duplicate">✅</span>
+            </div>
+            <div class="banner-text">
+              <h4>{{ checkResult.is_duplicate ? 'High Duplicate Match Risk' : 'Highly Unique Concept' }}</h4>
+              <p>{{ checkResult.is_duplicate ? 'An extremely similar idea is already indexed. Consider merging or altering your approach.' : 'No significant duplicates found in the repository.' }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metric Details -->
+        <div class="results-dashboard" *ngIf="checkResult.matches && checkResult.matches.length > 0">
+          <div class="score-ring-container">
+            <div class="score-ring" [class]="getScoreClass(checkResult.max_similarity_score)">
+              <svg viewBox="0 0 36 36" class="circular-chart">
+                <path class="circle-bg"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path class="circle"
+                  [attr.stroke-dasharray]="getPercent(checkResult.max_similarity_score) + ', 100'"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <text x="18" y="20.35" class="percentage">{{ getPercent(checkResult.max_similarity_score) }}%</text>
+              </svg>
+            </div>
+            <div class="score-meta">
+              <h5>Max Similarity</h5>
+              <p>Similarity Index computed by local Cross-Encoder</p>
+            </div>
+          </div>
+
+          <!-- COMPARISON CORNER: Side-by-side comparison with the top matching idea -->
+          <div class="comparison-corner">
+            <h4>Side-by-Side Analysis</h4>
+            <div class="comparison-grid">
+              
+              <!-- Draft Idea -->
+              <div class="compare-card draft">
+                <div class="compare-card-title">Submitted Draft</div>
+                <h5>{{ scannedIdea?.title }}</h5>
+                <div class="compare-desc">{{ scannedIdea?.description }}</div>
+              </div>
+              
+              <!-- Top Match -->
+              <div class="compare-card match" [class.danger-match]="checkResult.is_duplicate">
+                <div class="compare-card-title">Indexed Top Match (Similarity: {{ getPercent(checkResult.matches[0].similarity_score) }}%)</div>
+                <h5>{{ checkResult.matches[0].title }}</h5>
+                <div class="compare-desc">{{ checkResult.matches[0].description }}</div>
+                <div class="compare-metadata">
+                  <div class="metadata-block">
+                    <h6>AI Summary</h6>
+                    <p>{{ checkResult.matches[0].summary }}</p>
+                  </div>
+                  <div class="metadata-block">
+                    <h6>Extracted Tags</h6>
+                    <div class="tags-container">
+                      <span class="tag-pill" *ngFor="let t of checkResult.matches[0].tags">{{ t }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Candidates List -->
+          <div class="additional-matches-section" *ngIf="checkResult.matches.length > 1">
+            <h4>Other Similar Candidates (Reranked)</h4>
+            <div class="matches-list">
+              <div class="match-item" *ngFor="let m of checkResult.matches.slice(1)">
+                <div class="match-meta">
+                  <span class="match-score-pill" [class]="getScoreClass(m.similarity_score)">
+                    {{ getPercent(m.similarity_score) }}% Match
+                  </span>
+                  <h6>{{ m.title }}</h6>
+                </div>
+                <p class="match-summary">{{ m.summary }}</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Case where no matches returned (unexpected for checkResult, but safe fallback) -->
+        <div class="no-matches-found" *ngIf="!checkResult.matches || checkResult.matches.length === 0">
+          <p>No similar ideas detected. Go ahead and index this concept!</p>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- BOTTOM SECTION: Idea Repository Gallery -->
+  <section class="gallery-section">
+    <div class="gallery-header">
+      <div class="gallery-title">
+        <h2>Indexed Knowledge Base</h2>
+        <p>Explore ideas already stored in the system</p>
+      </div>
+
+      <!-- Controls -->
+      <div class="gallery-controls">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            id="search-input"
+            [(ngModel)]="searchQuery" 
+            (input)="applyFilter()" 
+            placeholder="Search titles, content, or tags..." 
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Category Filter Tags Scroll -->
+    <div class="topic-filters" *ngIf="allTopics.length > 0">
+      <button 
+        class="topic-btn" 
+        [class.active]="selectedTopic === ''" 
+        (click)="filterByTopic('')"
+      >
+        All Categories
+      </button>
+      <button 
+        *ngFor="let topic of allTopics" 
+        id="tag-filter-{{topic}}"
+        class="topic-btn" 
+        [class.active]="selectedTopic === topic" 
+        (click)="filterByTopic(topic)"
+      >
+        {{ topic }}
+      </button>
+    </div>
+
+    <!-- Loading Gallery Loader -->
+    <div class="gallery-loader-container" *ngIf="isLoading">
+      <div class="loader-spinner"></div>
+      <p>Synthesizing Knowledge Base...</p>
+    </div>
+
+    <!-- Ideas Grid -->
+    <div class="ideas-grid" *ngIf="!isLoading && filteredIdeas.length > 0">
+      <article 
+        *ngFor="let idea of filteredIdeas" 
+        id="idea-card-{{idea.id}}"
+        class="idea-card"
+        [class.expanded]="expandedIdeaId === idea.id"
+      >
+        <div class="card-glow"></div>
+        <div class="card-header">
+          <div class="card-meta">
+            <div class="card-topics">
+              <span class="topic-badge" *ngFor="let topic of idea.topics">
+                {{ topic }}
+              </span>
+            </div>
+            <span class="date-stamp">ID #{{ idea.id }}</span>
+          </div>
+          <h3>{{ idea.title }}</h3>
+        </div>
+
+        <div class="card-body">
+          <!-- AI generated Summary -->
+          <div class="summary-section">
+            <strong>AI Summary:</strong>
+            <p>{{ idea.summary }}</p>
+          </div>
+          
+          <!-- Full description, expandable -->
+          <div class="description-section">
+            <p class="description-text">{{ idea.description }}</p>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <!-- Tags list -->
+          <div class="card-tags">
+            <span class="tag-pill" *ngFor="let tag of idea.tags">{{ tag }}</span>
+          </div>
+          
+          <!-- Actions -->
+          <button 
+            id="expand-btn-{{idea.id}}"
+            class="btn-expand" 
+            (click)="toggleExpand(idea.id)"
+          >
+            {{ expandedIdeaId === idea.id ? 'Show Less ▲' : 'Show Details ▼' }}
+          </button>
+        </div>
+      </article>
+    </div>
+
+    <!-- Empty Gallery State -->
+    <div class="empty-gallery-state" *ngIf="!isLoading && filteredIdeas.length === 0">
+      <div class="empty-icon">📁</div>
+      <h4>No Ideas Found</h4>
+      <p *ngIf="ideas.length === 0">The knowledge base is currently empty. Submit your first idea above!</p>
+      <p *ngIf="ideas.length > 0">No indexed ideas match your search criteria. Try modifying your filters.</p>
+    </div>
+
+  </section>
+</div>

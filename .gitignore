@@ -1,0 +1,43 @@
+# Environment variables (Crucial to prevent API key leaks)
+.env
+backend/.env
+frontend/.env
+
+# Qdrant Database Storage (Local file-based storage)
+qdrant_storage/
+backend/qdrant_storage/
+test_qdrant_dir/
+backend/test_qdrant_dir/
+
+# Python caching & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# Angular build outputs and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+.angular/
+node_modules/
+dist/
+
+# IDE configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
