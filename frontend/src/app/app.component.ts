@@ -160,6 +160,26 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Deletes an idea from the database and refreshes the repository list.
+   */
+  deleteIdea(ideaId: number | undefined, event: MouseEvent) {
+    if (!ideaId) return;
+    
+    // Stop propagation so clicking delete doesn't expand/collapse the card
+    event.stopPropagation();
+    
+    this.ideaService.deleteIdea(ideaId).subscribe({
+      next: () => {
+        this.loadIdeas();
+      },
+      error: (err) => {
+        console.error('Delete error:', err);
+        alert('Failed to delete the idea.');
+      }
+    });
+  }
+
+  /**
    * Applies keyword searches and topic filters to the gallery checklist.
    */
   applyFilter() {

@@ -347,13 +347,22 @@
           </div>
           
           <!-- Actions -->
-          <button 
-            id="expand-btn-{{idea.id}}"
-            class="btn-expand" 
-            (click)="toggleExpand(idea.id)"
-          >
-            {{ expandedIdeaId === idea.id ? 'Show Less ▲' : 'Show Details ▼' }}
-          </button>
+          <div class="card-actions">
+            <button 
+              id="delete-btn-{{idea.id}}"
+              class="btn-delete" 
+              (click)="deleteIdea(idea.id, $event)"
+            >
+              Delete 🗑️
+            </button>
+            <button 
+              id="expand-btn-{{idea.id}}"
+              class="btn-expand" 
+              (click)="toggleExpand(idea.id)"
+            >
+              {{ expandedIdeaId === idea.id ? 'Show Less ▲' : 'Show Details ▼' }}
+            </button>
+          </div>
         </div>
       </article>
     </div>

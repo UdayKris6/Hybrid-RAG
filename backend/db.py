@@ -441,3 +441,32 @@ def get_all_ideas() -> List[Dict[str, Any]]:
         }
         for hit in results
     ]
+
+def delete_idea(idea_id: int):
+    """
+    Deletes an idea from both COLLECTION_NAME (parent) and CHUNKS_COLLECTION_NAME (child description chunks).
+    """
+    client = get_client()
+    
+    # 1. Delete parent idea
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=models.PointIdsList(
+            points=[idea_id]
+        )
+    )
+    
+    # 2. Delete all child chunks associated with this parent_id
+    client.delete(
+        collection_name=CHUNKS_COLLECTION_NAME,
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="parent_id",
+                        match=models.MatchValue(value=idea_id)
+                    )
+                ]
+            )
+        )
+    )

@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from db import init_db, insert_idea, search_ideas, get_all_ideas
+from db import init_db, insert_idea, search_ideas, get_all_ideas, delete_idea
 from services import (
     get_embeddings,
     extract_metadata,
@@ -185,6 +185,17 @@ def check_duplicate_idea(query: IdeaCheck):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         request_warnings.reset(token)
+@app.delete("/api/ideas/{idea_id}")
+def remove_idea(idea_id: int):
+    """
+    Deletes an idea by its unique integer ID.
+    """
+    try:
+        delete_idea(idea_id)
+        return {"status": "success", "message": f"Idea {idea_id} deleted successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

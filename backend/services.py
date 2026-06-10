@@ -106,12 +106,11 @@ class RerankerService:
         # Format the query and candidate idea for Cross-Encoder comparison
         pairs = []
         if query_title and query_description:
-            # Context engineering: prepend categories (use union of topics for comprehensive textual context)
-            query_topics_list = query_topics or []
-            query_formatted = f"Categories: {', '.join(query_topics_list)}. Title: {query_title}. Description: {query_description}"
+            # We do NOT prepend categories to eliminate Cross-Encoder attention bias (Prefix Bias).
+            # The category validation is applied as a post-rerank penalty check instead.
+            query_formatted = f"Title: {query_title}. Description: {query_description}"
             for doc in candidates:
-                cand_topics = doc.get("topics", [])
-                doc_formatted = f"Categories: {', '.join(cand_topics)}. Title: {doc['title']}. Description: {doc['description']}"
+                doc_formatted = f"Title: {doc['title']}. Description: {doc['description']}"
                 pairs.append([query_formatted, doc_formatted])
         else:
             # Fallback to legacy string format

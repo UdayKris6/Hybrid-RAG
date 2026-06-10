@@ -1168,6 +1168,28 @@
   gap: 4px;
 }
 
+.card-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.btn-delete {
+  background: transparent;
+  border: none;
+  color: #ff5e5e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+  transition: var(--transition-smooth);
+}
+
+.btn-delete:hover {
+  color: #ff9d9d;
+  text-shadow: 0 0 8px rgba(255, 94, 94, 0.4);
+}
+
 .btn-expand {
   background: transparent;
   border: none;

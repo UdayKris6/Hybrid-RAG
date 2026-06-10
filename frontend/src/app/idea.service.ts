@@ -61,4 +61,11 @@ export class IdeaService {
   checkDuplicate(idea: { title: string; description: string }): Observable<CheckResponse> {
     return this.http.post<CheckResponse>(`${this.apiUrl}/check`, idea);
   }
+
+  /**
+   * Deletes an idea by its unique integer ID.
+   */
+  deleteIdea(id: number): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/${id}`);
+  }
 }
