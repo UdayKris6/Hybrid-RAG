@@ -88,7 +88,16 @@ class RerankerService:
             self.model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
             print("CrossEncoder model loaded successfully.")
 
-    def rerank(self, query: str, candidates: List[Dict[str, Any]], top_n: int = 5) -> List[Dict[str, Any]]:
+    def rerank(
+        self, 
+        query: str, 
+        candidates: List[Dict[str, Any]], 
+        top_n: int = 5,
+        query_title: str = None,
+        query_description: str = None,
+        query_topics: List[str] = None,
+        query_vertical_domains: List[str] = None
+    ) -> List[Dict[str, Any]]:
         if not candidates:
             return []
 
@@ -96,16 +105,61 @@ class RerankerService:
         
         # Format the query and candidate idea for Cross-Encoder comparison
         pairs = []
-        for doc in candidates:
-            doc_text = f"Title: {doc['title']}. Description: {doc['description']}"
-            pairs.append([query, doc_text])
+        if query_title and query_description:
+            # Context engineering: prepend categories (use union of topics for comprehensive textual context)
+            query_topics_list = query_topics or []
+            query_formatted = f"Categories: {', '.join(query_topics_list)}. Title: {query_title}. Description: {query_description}"
+            for doc in candidates:
+                cand_topics = doc.get("topics", [])
+                doc_formatted = f"Categories: {', '.join(cand_topics)}. Title: {doc['title']}. Description: {doc['description']}"
+                pairs.append([query_formatted, doc_formatted])
+        else:
+            # Fallback to legacy string format
+            for doc in candidates:
+                doc_text = f"Title: {doc['title']}. Description: {doc['description']}"
+                pairs.append([query, doc_text])
             
         # Predict the similarity scores (raw logits)
         scores = self.model.predict(pairs)
         
-        # Add normal probability scores to each candidate using a sigmoid activation
+        # Add normal probability scores to each candidate using a sigmoid activation and category overlap penalty
         for doc, score in zip(candidates, scores):
             sigmoid_score = 1.0 / (1.0 + np.exp(-score))
+            
+            # Apply a 30% reduction penalty if they have zero core domain overlap
+            if query_title and query_description:
+                # 1. Resolve query vertical domains
+                if query_vertical_domains:
+                    q_domains = {d.lower() for d in query_vertical_domains}
+                elif query_topics:
+                    # Fallback to legacy filter
+                    GENERIC_TOPICS = {
+                        "blockchain", "ai", "artificial intelligence", "saas", "machine learning", 
+                        "iot", "cloud", "software", "hardware", "mobile app", "web app", "general idea"
+                    }
+                    q_domains = {t.lower() for t in query_topics} - GENERIC_TOPICS
+                else:
+                    q_domains = set()
+
+                # 2. Resolve candidate vertical domains
+                cand_verticals = doc.get("vertical_domains", [])
+                if cand_verticals:
+                    c_domains = {d.lower() for d in cand_verticals}
+                else:
+                    # Fallback to legacy topics filtering
+                    cand_topics = doc.get("topics", [])
+                    GENERIC_TOPICS = {
+                        "blockchain", "ai", "artificial intelligence", "saas", "machine learning", 
+                        "iot", "cloud", "software", "hardware", "mobile app", "web app", "general idea"
+                    }
+                    c_domains = {t.lower() for t in cand_topics} - GENERIC_TOPICS
+
+                # 3. Apply penalty if both have domain lists and there is no intersection
+                if q_domains and c_domains:
+                    overlap = q_domains.intersection(c_domains)
+                    if not overlap:
+                        sigmoid_score = sigmoid_score * 0.70
+                    
             doc["similarity_score"] = round(float(sigmoid_score), 4)
 
         # Sort candidates by similarity score in descending order
@@ -160,12 +214,12 @@ def get_embeddings(text: str) -> List[float]:
 
 def extract_metadata(title: str, description: str) -> Dict[str, Any]:
     """
-    Extracts summary, categories, and tags using the active LLM provider (Gemini or OpenAI).
+    Extracts summary, vertical domains, horizontal technologies, and tags using the active LLM provider (Gemini or OpenAI).
     Falls back to heuristic rules if no credentials are configured.
     """
     prompt = f"""
     You are an AI assistant analyzing a new project/product idea submission.
-    Your task is to extract a summary, relevant topics/categories, and key tags.
+    Your task is to extract a summary, relevant vertical industry domains, horizontal technologies, and key tags.
     
     Idea Title: {title}
     Idea Description: {description}
@@ -173,10 +227,13 @@ def extract_metadata(title: str, description: str) -> Dict[str, Any]:
     Respond STRICTLY in JSON format with the following keys:
     {{
         "summary": "a short 2-sentence summary of the core value proposition of the idea",
-        "topics": ["1 to 3 general categories/domains, e.g., SaaS, HealthTech, AI, Blockchain, E-commerce"],
+        "vertical_domains": ["1 to 3 target sectors/industries/verticals where this idea solves a problem, e.g., FinTech, HealthTech, AgriTech, CleanTech, GovTech, E-commerce, EdTech, Logistics"],
+        "horizontal_technologies": ["1 to 3 horizontal technology platforms, architectures, or frameworks used, e.g., AI/ML, Blockchain, IoT, SaaS, Wearables, Cloud, Mobile App, Web App, Hardware"],
         "tags": ["3 to 6 specific keywords/tags related to the idea features or technology"]
     }}
     """
+
+    res_dict = None
 
     if EMBEDDING_PROVIDER == "GEMINI" and is_gemini_configured and gemini_client is not None:
         try:
@@ -188,7 +245,7 @@ def extract_metadata(title: str, description: str) -> Dict[str, Any]:
                     temperature=0.3
                 )
             )
-            return json.loads(response.text)
+            res_dict = json.loads(response.text)
         except Exception as e:
             err_str = str(e)
             print(f"Error extracting Gemini metadata: {err_str}. Falling back to mock...")
@@ -209,16 +266,62 @@ def extract_metadata(title: str, description: str) -> Dict[str, Any]:
                 response_format={"type": "json_object"},
                 temperature=0.3
             )
-            return json.loads(response.choices[0].message.content)
+            res_dict = json.loads(response.choices[0].message.content)
         except Exception as e:
             print(f"Error extracting OpenAI metadata: {e}. Falling back to mock...")
+
+    if res_dict is not None:
+        # Normalize and validate returned fields
+        if not isinstance(res_dict.get("vertical_domains"), list):
+            res_dict["vertical_domains"] = []
+        if not isinstance(res_dict.get("horizontal_technologies"), list):
+            res_dict["horizontal_technologies"] = []
+        # Support legacy callers/frontend display by unionizing
+        res_dict["topics"] = list(set(res_dict["vertical_domains"] + res_dict["horizontal_technologies"]))
+        return res_dict
 
     # Heuristic Mock Metadata Fallback
     words = [w.capitalize() for w in title.split() if len(w) > 4][:4]
     summary_text = (description[:120] + "...") if len(description) > 120 else description
+    
+    text_lower = f"{title} {description}".lower()
+    inferred_techs = []
+    inferred_verticals = []
+    
+    tech_keywords = {
+        "blockchain": "Blockchain", "decentralized": "Blockchain", "ethereum": "Blockchain",
+        "ai": "AI/ML", "artificial intelligence": "AI/ML", "smart": "AI/ML", "learn": "AI/ML", "neural": "AI/ML",
+        "iot": "IoT", "sensor": "IoT", "device": "IoT",
+        "saas": "SaaS", "software": "SaaS",
+        "app": "Mobile App" if "mobile" in text_lower or "phone" in text_lower else "Web App",
+        "web": "Web App",
+        "wearable": "Wearables", "wristband": "Wearables"
+    }
+    vertical_keywords = {
+        "bank": "FinTech", "transaction": "FinTech", "finance": "FinTech", "ledger": "FinTech",
+        "medical": "HealthTech", "patient": "HealthTech", "doctor": "HealthTech", "glucose": "HealthTech", "health": "HealthTech",
+        "solar": "CleanTech", "irrigation": "AgriTech", "agriculture": "AgriTech", "farm": "AgriTech", "crop": "AgriTech",
+        "energy": "CleanTech", "grid": "CleanTech", "power": "CleanTech",
+        "vote": "GovTech", "ballot": "GovTech", "voting": "GovTech"
+    }
+    
+    for kw, val in tech_keywords.items():
+        if kw in text_lower and val not in inferred_techs:
+            inferred_techs.append(val)
+    for kw, val in vertical_keywords.items():
+        if kw in text_lower and val not in inferred_verticals:
+            inferred_verticals.append(val)
+            
+    if not inferred_techs:
+        inferred_techs = ["General Technology"]
+    if not inferred_verticals:
+        inferred_verticals = ["General Idea"]
+        
     return {
         "summary": f"A project exploring: {summary_text}",
-        "topics": ["General Idea"] if not words else [words[0]],
+        "vertical_domains": inferred_verticals,
+        "horizontal_technologies": inferred_techs,
+        "topics": list(set(inferred_verticals + inferred_techs)),
         "tags": ["Idea"] + words
     }
 

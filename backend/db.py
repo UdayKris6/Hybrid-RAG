@@ -222,13 +222,19 @@ def insert_idea(
     topics: List[str],
     tags: List[str],
     title_vector: List[float],
-    description_vector: List[float]
+    description_vector: List[float],
+    vertical_domains: List[str] = None,
+    horizontal_technologies: List[str] = None
 ):
     """
     Stores an idea: parent payload in 'ideas' collection, and description chunks in 'idea_chunks'.
     """
     client = get_client()
     from services import get_embeddings
+    
+    # Ensure they are lists
+    v_domains = vertical_domains or []
+    h_techs = horizontal_technologies or []
     
     # 1. Combine title and description for lexical token indexing in parent collection
     lexical_text = f"{title} {description}"
@@ -250,7 +256,9 @@ def insert_idea(
                     "description": description,
                     "summary": summary,
                     "topics": topics,
-                    "tags": tags
+                    "tags": tags,
+                    "vertical_domains": v_domains,
+                    "horizontal_technologies": h_techs
                 }
             )
         ]
@@ -305,6 +313,8 @@ def insert_idea(
                     "parent_summary": summary,
                     "parent_topics": topics,
                     "parent_tags": tags,
+                    "parent_vertical_domains": v_domains,
+                    "parent_horizontal_technologies": h_techs,
                     "chunk_text": chunk_str,
                     "chunk_index": idx
                 }
@@ -381,7 +391,9 @@ def search_ideas(
             "description": hit.payload.get("description"),
             "summary": hit.payload.get("summary"),
             "topics": hit.payload.get("topics", []),
-            "tags": hit.payload.get("tags", [])
+            "tags": hit.payload.get("tags", []),
+            "vertical_domains": hit.payload.get("vertical_domains", []),
+            "horizontal_technologies": hit.payload.get("horizontal_technologies", [])
         }
         
     def format_chunk_hit(hit):
@@ -392,7 +404,9 @@ def search_ideas(
             "description": hit.payload.get("parent_description"),
             "summary": hit.payload.get("parent_summary"),
             "topics": hit.payload.get("parent_topics", []),
-            "tags": hit.payload.get("parent_tags", [])
+            "tags": hit.payload.get("parent_tags", []),
+            "vertical_domains": hit.payload.get("parent_vertical_domains", []),
+            "horizontal_technologies": hit.payload.get("parent_horizontal_technologies", [])
         }
         
     return (
@@ -421,7 +435,9 @@ def get_all_ideas() -> List[Dict[str, Any]]:
             "description": hit.payload.get("description"),
             "summary": hit.payload.get("summary"),
             "topics": hit.payload.get("topics", []),
-            "tags": hit.payload.get("tags", [])
+            "tags": hit.payload.get("tags", []),
+            "vertical_domains": hit.payload.get("vertical_domains", []),
+            "horizontal_technologies": hit.payload.get("horizontal_technologies", [])
         }
         for hit in results
     ]

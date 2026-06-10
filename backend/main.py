@@ -92,7 +92,9 @@ def create_idea(idea: IdeaCreate):
             topics=metadata.get("topics", []),
             tags=metadata.get("tags", []),
             title_vector=title_vector,
-            description_vector=description_vector
+            description_vector=description_vector,
+            vertical_domains=metadata.get("vertical_domains", []),
+            horizontal_technologies=metadata.get("horizontal_technologies", [])
         )
         
         return {
@@ -102,6 +104,8 @@ def create_idea(idea: IdeaCreate):
             "summary": metadata.get("summary", ""),
             "topics": metadata.get("topics", []),
             "tags": metadata.get("tags", []),
+            "vertical_domains": metadata.get("vertical_domains", []),
+            "horizontal_technologies": metadata.get("horizontal_technologies", []),
             "status": "success",
             "warnings": list(warnings_list)
         }
@@ -149,9 +153,22 @@ def check_duplicate_idea(query: IdeaCheck):
         # Take the top 15 results from RRF to send to the Cross-Encoder Reranker
         top_candidates = rrf_merged[:15]
         
-        # 4. Rerank candidates using our local Cross-Encoder model
+        # Extract metadata (topics) for the draft query to allow category-based context and overlap penalties
+        query_metadata = extract_metadata(query.title, query.description)
+        query_topics = query_metadata.get("topics", [])
+        query_vertical_domains = query_metadata.get("vertical_domains", [])
+        
+        # 4. Rerank candidates using our local Cross-Encoder model with category context and penalties
         query_text = f"Title: {query.title}. Description: {query.description}"
-        final_matches = reranker_service.rerank(query_text, top_candidates, top_n=5)
+        final_matches = reranker_service.rerank(
+            query=query_text,
+            candidates=top_candidates,
+            top_n=5,
+            query_title=query.title,
+            query_description=query.description,
+            query_topics=query_topics,
+            query_vertical_domains=query_vertical_domains
+        )
         
         # 5. Determine warning flags
         # If the highest score is > 0.82, we flag it as a highly probable duplicate
